@@ -37,26 +37,27 @@ exatamente isso, substituindo pelos seus valores reais:
 
 ```
 APIFY_TOKEN = "seu_token_aqui"
-APIFY_ACTOR_WEBMOTORS = "usuario/nome-do-actor-webmotors"
-APIFY_ACTOR_ICARROS = "usuario/nome-do-actor-icarros"
+APIFY_ACTOR_WEBMOTORS = "ribtools/webmotors-scraper"
+APIFY_ACTOR_OLX = "israeloriente/olx-cars-scraper"
 ```
 
 Onde conseguir cada valor:
 - **APIFY_TOKEN**: crie uma conta em https://apify.com (tem plano
   gratuito), depois vá em **Settings → Integrations → API tokens**.
-- **APIFY_ACTOR_WEBMOTORS / APIFY_ACTOR_ICARROS**: na Apify Store
-  (https://apify.com/store), busque "webmotors" e "icarros", escolha um
-  actor de cada, e copie o identificador que aparece na URL da página do
-  actor (formato `usuario/nome-do-actor`).
+- **APIFY_ACTOR_WEBMOTORS / APIFY_ACTOR_OLX**: os dois acima já são os
+  actors configurados no código. Se um dia quiser trocar por outro, o
+  identificador aparece na URL da página do actor na Apify Store (formato
+  `usuario/nome-do-actor`).
 
-## Passo 4 — Ajustar os nomes de campo (só uma vez)
-Cada actor da Apify Store devolve os dados com nomes de campo ligeiramente
-diferentes (ex.: um chama de `price`, outro de `preco`). Depois de rodar uma
-consulta de teste no site e ver que o resultado não bate, é só:
-1. No Apify Console, abrir o último "run" do actor e ver o JSON de saída.
+## Passo 4 — Só se um dia trocar de actor
+Os nomes de campo dos actors atuais (`ribtools/webmotors-scraper` e
+`israeloriente/olx-cars-scraper`) já estão configurados no código - não
+precisa mexer em nada pra usar esses dois. Se um dia você trocar por outro
+actor da Apify Store, é só:
+1. No Apify Console, abrir o último "run" do actor novo e ver o JSON de saída.
 2. No GitHub, editar dois arquivos (botão de lápis na página do arquivo):
-   - `src/apify_client_wrapper.py`
-   - `src/normalize.py`
+   - `src/apify_client_wrapper.py` (como montar a busca)
+   - `src/normalize.py` (dicts `CAMPOS_WEBMOTORS` / `CAMPOS_OLX`)
 3. Ajustar os nomes conforme o comentário que já está em cada arquivo.
 4. O Streamlit atualiza o site sozinho assim que você salvar a mudança no
    GitHub (não precisa reimplantar manualmente).
