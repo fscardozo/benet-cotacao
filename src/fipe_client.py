@@ -57,8 +57,15 @@ class FipeClient:
     # Cache local (SQLite) para reduzir chamadas repetidas à API pública
     # ------------------------------------------------------------------
     def _init_cache(self) -> None:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(DB_PATH)
+        # Se a pasta não puder ser escrita (comum em algumas hospedagens em
+        # nuvem), desliga o cache silenciosamente em vez de quebrar o app -
+        # o cache é só uma otimização, não uma dependência.
+        try:
+            DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(DB_PATH)
+        except OSError:
+            self.use_cache = False
+            return
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS fipe_valores (

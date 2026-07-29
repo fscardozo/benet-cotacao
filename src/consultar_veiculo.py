@@ -1,15 +1,19 @@
 """
 consultar_veiculo.py
 Consulta pontual: você informa marca, modelo, versão e ano de um veículo, e
-recebe o valor FIPE + o valor praticado no mercado (Webmotors/iCarros via
+recebe o valor FIPE + o valor praticado no mercado (Webmotors + OLX, via
 Apify) para veículos comparáveis.
 
-Uso:
+Uso via linha de comando (busca a FIPE por nome, com correspondência aproximada):
     python src/consultar_veiculo.py --marca "Chevrolet" --modelo "Onix Sedan LT 1.0" --ano 2024 --estado sp
 
-Ou importando a função diretamente:
+Uso programático com código FIPE exato (usado pelo app.py, que já sabe o
+código exato por causa dos menus em cascata):
     from consultar_veiculo import consultar_veiculo
-    resultado = consultar_veiculo("Chevrolet", "Onix Sedan LT 1.0", 2024, estado="sp")
+    resultado = consultar_veiculo(
+        marca="Chevrolet", modelo="Onix Sedan LT 1.0", ano=2024, estado="sp",
+        codigo_marca="59", codigo_modelo="5940", codigo_ano="2024-1",
+    )
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from dataclasses import dataclass
 
 from apify_client_wrapper import MarketplaceScraperClient
 from fipe_client import FipeClient, ValorFipe
-from normalize import AnuncioNormalizado, normalizar_icarros, normalizar_webmotors
+from normalize import AnuncioNormalizado, normalizar_olx, normalizar_webmotors
 
 
 @dataclass
@@ -44,23 +48,48 @@ def consultar_veiculo(
     ano: int,
     estado: str = "sp",
     max_paginas: int = 3,
+    codigo_marca: str | None = None,
+    codigo_modelo: str | None = None,
+    codigo_ano: str | None = None,
 ) -> ResultadoConsulta:
     fipe_client = FipeClient()
     scraper = MarketplaceScraperClient()
 
-    # 1. Valor FIPE
-    valor_fipe_obj: ValorFipe | None = fipe_client.buscar_por_nome(
-        nome_marca=marca, nome_modelo=modelo, ano_desejado=ano
-    )
+    # 1. Valor FIPE - usa os códigos exatos se disponíveis (mais preciso;
+    #    é o que o app.py manda, já que os menus em cascata sempre têm o
+    #    código certo), senão cai pra busca aproximada por nome.
+    valor_fipe_obj: ValorFipe | None
+    if codigo_marca and codigo_modelo and codigo_ano:
+        valor_fipe_obj = fipe_client.consultar_valor(codigo_marca, codigo_modelo, codigo_ano)
+    else:
+        valor_fipe_obj = fipe_client.buscar_por_nome(
+            nome_marca=marca, nome_modelo=modelo, ano_desejado=ano
+        )
     valor_fipe = valor_fipe_obj.valor if valor_fipe_obj else None
 
     # 2. Anúncios de mercado equivalentes
     brutos_wm = scraper.buscar_webmotors(marca=marca, modelo=modelo, estado=estado, max_paginas=max_paginas)
-    brutos_ic = scraper.buscar_icarros(marca=marca, modelo=modelo, estado=estado, max_paginas=max_paginas)
+    brutos_olx = scraper.buscar_olx(
+        marca=marca, modelo=modelo, estado=estado, max_paginas=max_paginas,
+        ano_de=ano, ano_ate=ano,
+    )
 
-    anuncios = normalizar_webmotors(brutos_wm) + normalizar_icarros(brutos_ic)
-    # Filtra só o ano pedido (± 0, pode relaxar pra ano-1/ano+1 se vier pouco resultado)
+    anuncios = normalizar_webmotors(brutos_wm) + normalizar_olx(brutos_olx)
+    # Filtra só o ano pedido e preços válidos
     anuncios = [a for a in anuncios if a.ano_modelo == ano and a.preco > 0]
+
+    # Cruza com a FIPE (usa o mesmo valor já consultado acima como única
+    # entrada da "tabela local", já que aqui é uma consulta pontual de um
+    # único modelo/ano - não precisa buscar mais nada)
+    if valor_fipe_obj:
+        for a in anuncios:
+            a.valor_fipe = valor_fipe_obj.valor
+            a.gap_percentual = round((a.preco - valor_fipe_obj.valor) / valor_fipe_obj.valor * 100, 2)
+    else:
+        for a in anuncios:
+            if a.fipe_do_anuncio:
+                a.valor_fipe = a.fipe_do_anuncio
+                a.gap_percentual = round((a.preco - a.fipe_do_anuncio) / a.fipe_do_anuncio * 100, 2)
 
     precos = [a.preco for a in anuncios]
     preco_medio = statistics.mean(precos) if precos else None
@@ -105,10 +134,7 @@ def imprimir_resultado(r: ResultadoConsulta) -> None:
 
         print("\nAnúncios individuais:")
         for a in sorted(r.anuncios, key=lambda x: x.preco):
-            print(
-                f"  [{a.portal}] R$ {a.preco:,.2f} | {a.km or '?'} km | "
-                f"{a.cidade}/{a.estado} | {a.anunciante} | {a.url}"
-            )
+            print(f"  [{a.portal}] R$ {a.preco:,.2f} | {a.km or '?'} km | {a.url}")
     else:
         print("  Nenhum anúncio comparável encontrado no mercado.")
 
